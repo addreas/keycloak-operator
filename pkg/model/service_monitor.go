@@ -1,8 +1,8 @@
 package model
 
 import (
-	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
-	"github.com/keycloak/keycloak-operator/pkg/apis/keycloak/v1alpha1"
+	"github.com/addreas/keycloak-operator/api/v1alpha1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,7 +24,9 @@ func ServiceMonitor(cr *v1alpha1.Keycloak) *monitoringv1.ServiceMonitor {
 					Port:   ApplicationName,
 					Scheme: "https",
 					TLSConfig: &monitoringv1.TLSConfig{
-						InsecureSkipVerify: true,
+						SafeTLSConfig: monitoringv1.SafeTLSConfig{
+							InsecureSkipVerify: true,
+						},
 					},
 				},
 				{
@@ -32,7 +34,9 @@ func ServiceMonitor(cr *v1alpha1.Keycloak) *monitoringv1.ServiceMonitor {
 					Port:   KeycloakMonitoringServiceName,
 					Scheme: "http",
 					TLSConfig: &monitoringv1.TLSConfig{
-						InsecureSkipVerify: true,
+						SafeTLSConfig: monitoringv1.SafeTLSConfig{
+							InsecureSkipVerify: true,
+						},
 					},
 				},
 			},

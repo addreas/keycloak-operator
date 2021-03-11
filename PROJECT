@@ -1,0 +1,21 @@
+domain: keycloak.org
+layout: go.kubebuilder.io/v3
+projectName: keycloak-operator
+repo: github.com/addreas/keycloak-operator
+resources:
+- crdVersion: v1
+  kind: KeycloakBackup
+  version: v1alpha1
+- crdVersion: v1
+  kind: KeycloakRealm
+  version: v1alpha1
+- crdVersion: v1
+  kind: KeycloakClient
+  version: v1alpha1
+- crdVersion: v1
+  kind: Keycloak
+  version: v1alpha1
+version: 3-alpha
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}

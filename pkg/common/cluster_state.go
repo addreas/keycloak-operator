@@ -9,16 +9,16 @@ import (
 	v13 "github.com/openshift/api/route/v1"
 	"k8s.io/api/extensions/v1beta1"
 
-	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
-	grafanav1alpha1 "github.com/integr8ly/grafana-operator/v3/pkg/apis/integreatly/v1alpha1"
-	"github.com/keycloak/keycloak-operator/pkg/apis/keycloak/v1alpha1"
-	kc "github.com/keycloak/keycloak-operator/pkg/apis/keycloak/v1alpha1"
-	"github.com/keycloak/keycloak-operator/pkg/model"
+	kc "github.com/addreas/keycloak-operator/api/v1alpha1"
+	"github.com/addreas/keycloak-operator/pkg/model"
+	grafanav1alpha1 "github.com/integr8ly/grafana-operator/api/integreatly/v1alpha1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	v12 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -66,13 +66,12 @@ type ClusterState struct {
 	PostgresqlServiceEndpoints      *v1.Endpoints
 	PodDisruptionBudget             *v1beta12.PodDisruptionBudget
 	KeycloakProbes                  *v1.ConfigMap
-	KeycloakBackup                  *v1alpha1.KeycloakBackup
+	KeycloakBackup                  *kc.KeycloakBackup
 }
 
 func (i *ClusterState) Read(context context.Context, cr *kc.Keycloak, controllerClient client.Client) error {
 	stateManager := GetStateManager()
 	routeKindExists, keyExists := stateManager.GetState(RouteKind).(bool)
-
 	err := i.readKeycloakAdminSecretCurrentState(context, cr, controllerClient)
 	if err != nil {
 		return err
@@ -379,7 +378,7 @@ func (i *ClusterState) readProbesCurrentState(context context.Context, cr *kc.Ke
 
 	if err != nil {
 		// If the resource type doesn't exist on the cluster or does exist but is not found
-		if meta.IsNoMatchError(err) || apiErrors.IsNotFound(err) {
+		if meta.IsNoMatchError(err) || apiErrors.IsNotFound(err) || runtime.IsNotRegisteredError(err) {
 			i.KeycloakProbes = nil
 		} else {
 			return err
@@ -549,7 +548,7 @@ func (i *ClusterState) readKeycloakBackupCurrentState(context context.Context, c
 	labelSelect := metav1.LabelSelector{
 		MatchLabels: cr.Labels,
 	}
-	backupCr := &v1alpha1.KeycloakBackup{}
+	backupCr := &kc.KeycloakBackup{}
 	backupCr.Namespace = cr.Namespace
 	backupCr.Name = model.MigrateBackupName + "-" + BackupTime
 	backupCr.Spec.InstanceSelector = &labelSelect

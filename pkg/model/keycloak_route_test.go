@@ -3,7 +3,7 @@ package model
 import (
 	"testing"
 
-	"github.com/keycloak/keycloak-operator/pkg/apis/keycloak/v1alpha1"
+	"github.com/addreas/keycloak-operator/api/v1alpha1"
 	v1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/assert"
 )

@@ -1,20 +1,28 @@
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.13 AS build-env
+# Build the manager binary
+FROM golang:1.15 as builder
 
-COPY . /src/
+WORKDIR /workspace
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
 
-RUN cd /src && \
-    make code/compile && \
-    echo "Build SHA1: $(git rev-parse HEAD)" && \
-    echo "$(git rev-parse HEAD)" > /src/BUILD_INFO
+COPY vendor/ vendor/
 
-# final stage
-FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
+# Copy the go source
+COPY main.go main.go
+COPY api/ api/
+COPY pkg/ pkg/
+COPY version/ version/
+COPY controllers/ controllers/
 
-##LABELS
+# Build
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager main.go
 
-RUN microdnf update && microdnf clean all && rm -rf /var/cache/yum/*
+# Use distroless as minimal base image to package the manager binary
+# Refer to https://github.com/GoogleContainerTools/distroless for more details
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=builder /workspace/manager .
+USER 65532:65532
 
-COPY --from=build-env /src/BUILD_INFO /src/BUILD_INFO
-COPY --from=build-env /src/tmp/_output/bin/keycloak-operator /usr/local/bin
-
-ENTRYPOINT ["/usr/local/bin/keycloak-operator"]
+ENTRYPOINT ["/manager"]

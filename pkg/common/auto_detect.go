@@ -3,10 +3,9 @@ package common
 import (
 	"time"
 
-	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
-	grafanav1alpha1 "github.com/integr8ly/grafana-operator/v3/pkg/apis/integreatly/v1alpha1"
-	"github.com/keycloak/keycloak-operator/pkg/k8sutil"
+	grafanav1alpha1 "github.com/integr8ly/grafana-operator/api/integreatly/v1alpha1"
 	routev1 "github.com/openshift/api/route/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -52,7 +51,7 @@ func (b *Background) autoDetectCapabilities() {
 }
 
 func (b *Background) detectRoute() {
-	resourceExists, _ := k8sutil.ResourceExists(b.dc, routev1.SchemeGroupVersion.String(), RouteKind)
+	resourceExists, _ := ResourceExists(b.dc, routev1.SchemeGroupVersion.String(), RouteKind)
 	if resourceExists {
 		// Set state that the Route kind exists. Used to determine when a route or an Ingress should be created
 		stateManager := GetStateManager()
@@ -63,27 +62,46 @@ func (b *Background) detectRoute() {
 func (b *Background) detectMonitoringResources() {
 	// detect the PrometheusRule resource type exist on the cluster
 	stateManager := GetStateManager()
-	resourceExists, _ := k8sutil.ResourceExists(b.dc, monitoringv1.SchemeGroupVersion.String(), monitoringv1.PrometheusRuleKind)
+	resourceExists, _ := ResourceExists(b.dc, monitoringv1.SchemeGroupVersion.String(), monitoringv1.PrometheusRuleKind)
 	stateManager.SetState(monitoringv1.PrometheusRuleKind, resourceExists)
 
 	// detect the ServiceMonitor resource type exist on the cluster
-	resourceExists, _ = k8sutil.ResourceExists(b.dc, monitoringv1.SchemeGroupVersion.String(), monitoringv1.ServiceMonitorsKind)
+	resourceExists, _ = ResourceExists(b.dc, monitoringv1.SchemeGroupVersion.String(), monitoringv1.ServiceMonitorsKind)
 	stateManager.SetState(monitoringv1.ServiceMonitorsKind, resourceExists)
 
 	// detect the GrafanaDashboard resource type resourceExists on the cluster
-	resourceExists, _ = k8sutil.ResourceExists(b.dc, grafanav1alpha1.SchemeGroupVersion.String(), grafanav1alpha1.GrafanaDashboardKind)
-	stateManager.SetState(monitoringv1.ServiceMonitorsKind, resourceExists)
+	resourceExists, _ = ResourceExists(b.dc, grafanav1alpha1.GroupVersion.String(), "GrafanaDashboard")
+	stateManager.SetState("GrafanaDashboard", resourceExists)
 }
 
 func (b *Background) detectOpenshift() {
 	apiGroupVersion := "operator.openshift.io/v1"
 	kind := OpenShiftAPIServerKind
 	stateManager := GetStateManager()
-	isOpenshift, _ := k8sutil.ResourceExists(b.dc, apiGroupVersion, kind)
+	isOpenshift, _ := ResourceExists(b.dc, apiGroupVersion, kind)
 	if isOpenshift {
 		// Set state that its Openshift (helps to differentiate between openshift and kubernetes)
 		stateManager.SetState(OpenShiftAPIServerKind, true)
 	} else {
 		stateManager.SetState(OpenShiftAPIServerKind, false)
 	}
+}
+
+// ResourceExists returns true if the given resource kind exists
+// in the given api groupversion
+func ResourceExists(dc discovery.DiscoveryInterface, apiGroupVersion, kind string) (bool, error) {
+	_, apiLists, err := dc.ServerGroupsAndResources()
+	if err != nil {
+		return false, err
+	}
+	for _, apiList := range apiLists {
+		if apiList.GroupVersion == apiGroupVersion {
+			for _, r := range apiList.APIResources {
+				if r.Kind == kind {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }

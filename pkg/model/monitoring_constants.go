@@ -1380,7 +1380,7 @@ const GrafanaDashboardJSON = `{
 			  "steppedLine": false,
 			  "targets": [
 				{
-				  "expr": "up{namespace=\"$namespace\", job=\"keycloak-operator-metrics\", endpoint=\"http-metrics\"}",
+				  "expr": "up{namespace=\"$namespace\", job=\"keycloak-operator-controller-manager-metrics-service\", endpoint=\"https\"}",
 				  "format": "time_series",
 				  "hide": false,
 				  "intervalFactor": 1,

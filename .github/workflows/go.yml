@@ -8,7 +8,7 @@ jobs:
     - name: Set up Go 1.x
       uses: actions/setup-go@v2
       with:
-        go-version: 1.13
+        go-version: 1.15
       id: go
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
@@ -17,10 +17,10 @@ jobs:
       env:
         GOROOT: ""
       with:
-        target: code/compile
-    - name: Verify vendor directory
-      uses: ouzi-dev/go-make-action@v1.3.0
-      env:
-        GOROOT: ""
-      with:
-        target: setup/mod/verify
+        target: manager
+    # - name: Verify vendor directory
+    #   uses: ouzi-dev/go-make-action@v1.3.0
+    #   env:
+    #     GOROOT: ""
+    #   with:
+    #     target: setup/mod/verify

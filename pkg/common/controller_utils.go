@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/keycloak/keycloak-operator/pkg/apis/keycloak/v1alpha1"
+	"github.com/addreas/keycloak-operator/api/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,7 +28,7 @@ const (
 	OpenShiftAPIServerKind    = "OpenShiftAPIServer"
 )
 
-func WatchSecondaryResource(c controller.Controller, controllerName string, resourceKind string, objectTypetoWatch runtime.Object, cr runtime.Object) error {
+func WatchSecondaryResource(c controller.Controller, controllerName string, resourceKind string, objectTypetoWatch client.Object, cr runtime.Object) error {
 	stateManager := GetStateManager()
 	stateFieldName := GetStateFieldName(controllerName, resourceKind)
 

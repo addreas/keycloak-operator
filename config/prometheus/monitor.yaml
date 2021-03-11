@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  labels:
+    control-plane: controller
+  name: controller
+  namespace: system
+spec:
+  podMetricsEndpoints:
+    - path: /metrics
+      port: metrics
+  selector:
+    matchLabels:
+      control-plane: controller

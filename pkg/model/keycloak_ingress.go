@@ -1,7 +1,7 @@
 package model
 
 import (
-	kc "github.com/keycloak/keycloak-operator/pkg/apis/keycloak/v1alpha1"
+	kc "github.com/addreas/keycloak-operator/api/v1alpha1"
 	"k8s.io/api/extensions/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/keycloak/keycloak-operator/pkg/apis/keycloak/v1alpha1"
+	"github.com/addreas/keycloak-operator/api/v1alpha1"
 	"github.com/pkg/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -22,8 +22,8 @@ const (
 
 type ActionRunner interface {
 	RunAll(desiredState DesiredClusterState) error
-	Create(obj runtime.Object) error
-	Update(obj runtime.Object) error
+	Create(obj client.Object) error
+	Update(obj client.Object) error
 	CreateRealm(obj *v1alpha1.KeycloakRealm) error
 	DeleteRealm(obj *v1alpha1.KeycloakRealm) error
 	CreateClient(keycloakClient *v1alpha1.KeycloakClient, Realm string) error
@@ -56,11 +56,11 @@ type ClusterActionRunner struct {
 	keycloakClient KeycloakInterface
 	context        context.Context
 	scheme         *runtime.Scheme
-	cr             runtime.Object
+	cr             client.Object
 }
 
 // Create an action runner to run kubernetes actions
-func NewClusterActionRunner(context context.Context, client client.Client, scheme *runtime.Scheme, cr runtime.Object) ActionRunner {
+func NewClusterActionRunner(context context.Context, client client.Client, scheme *runtime.Scheme, cr client.Object) ActionRunner {
 	return &ClusterActionRunner{
 		client:  client,
 		context: context,
@@ -70,7 +70,7 @@ func NewClusterActionRunner(context context.Context, client client.Client, schem
 }
 
 // Create an action runner to run kubernetes and keycloak api actions
-func NewClusterAndKeycloakActionRunner(context context.Context, client client.Client, scheme *runtime.Scheme, cr runtime.Object, keycloakClient KeycloakInterface) ActionRunner {
+func NewClusterAndKeycloakActionRunner(context context.Context, client client.Client, scheme *runtime.Scheme, cr client.Object, keycloakClient KeycloakInterface) ActionRunner {
 	return &ClusterActionRunner{
 		client:         client,
 		context:        context,
@@ -93,7 +93,7 @@ func (i *ClusterActionRunner) RunAll(desiredState DesiredClusterState) error {
 	return nil
 }
 
-func (i *ClusterActionRunner) Create(obj runtime.Object) error {
+func (i *ClusterActionRunner) Create(obj client.Object) error {
 	err := controllerutil.SetControllerReference(i.cr.(v1.Object), obj.(v1.Object), i.scheme)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func (i *ClusterActionRunner) Create(obj runtime.Object) error {
 	return nil
 }
 
-func (i *ClusterActionRunner) Update(obj runtime.Object) error {
+func (i *ClusterActionRunner) Update(obj client.Object) error {
 	err := controllerutil.SetControllerReference(i.cr.(v1.Object), obj.(v1.Object), i.scheme)
 	if err != nil {
 		return err
@@ -351,14 +351,14 @@ func (i *ClusterActionRunner) configureBrowserRedirector(provider, flow string, 
 // An action to create generic kubernetes resources
 // (resources that don't require special treatment)
 type GenericCreateAction struct {
-	Ref runtime.Object
+	Ref client.Object
 	Msg string
 }
 
 // An action to update generic kubernetes resources
 // (resources that don't require special treatment)
 type GenericUpdateAction struct {
-	Ref runtime.Object
+	Ref client.Object
 	Msg string
 }
 

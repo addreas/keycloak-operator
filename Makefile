@@ -1,216 +1,136 @@
-# Other contants
-NAMESPACE=keycloak
-PROJECT=keycloak-operator
-PKG=github.com/keycloak/keycloak-operator
-OPERATOR_SDK_VERSION=v0.18.2
-OPERATOR_SDK_DOWNLOAD_URL=https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk-$(OPERATOR_SDK_VERSION)-x86_64-linux-gnu
-MINIKUBE_DOWNLOAD_URL=https://github.com/kubernetes/minikube/releases/download/v1.9.2/minikube-linux-amd64
-KUBECTL_DOWNLOAD_URL=https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
+# VERSION defines the project version for the bundle.
+# Update this value when you upgrade the version of your project.
+# To re-generate a bundle for another specific version without changing the standard setup, you can:
+# - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
+# - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
+VERSION ?= 0.0.1
 
-# Compile constants
-COMPILE_TARGET=./tmp/_output/bin/$(PROJECT)
-GOOS=${GOOS:-${GOHOSTOS}}
-GOARCH=${GOACH:-${GOHOSTARCH}}
-CGO_ENABLED=0
+# CHANNELS define the bundle channels used in the bundle.
+# Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
+# To re-generate a bundle for other specific channels without changing the standard setup, you can:
+# - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=preview,fast,stable)
+# - use environment variables to overwrite this value (e.g export CHANNELS="preview,fast,stable")
+ifneq ($(origin CHANNELS), undefined)
+BUNDLE_CHANNELS := --channels=$(CHANNELS)
+endif
 
-##############################
-# Operator Management        #
-##############################
-.PHONY: cluster/prepare
-cluster/prepare:
-	@kubectl apply -f deploy/crds/ || true
-	@kubectl create namespace $(NAMESPACE) || true
-	@which oc 2>/dev/null ; if [ $$? -eq 0 ]; then \
-		oc project $(NAMESPACE) || true; \
-	fi
-	@kubectl apply -f deploy/role.yaml -n $(NAMESPACE) || true
-	@kubectl apply -f deploy/role_binding.yaml -n $(NAMESPACE) || true
-	@kubectl apply -f deploy/service_account.yaml -n $(NAMESPACE) || true
+# DEFAULT_CHANNEL defines the default channel used in the bundle.
+# Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
+# To re-generate a bundle for any other default channel without changing the default setup, you can:
+# - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
+# - use environment variables to overwrite this value (e.g export DEFAULT_CHANNEL="stable")
+ifneq ($(origin DEFAULT_CHANNEL), undefined)
+BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
+endif
+BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
-.PHONY: cluster/clean
-cluster/clean:
-	@kubectl get all -n $(NAMESPACE) --no-headers=true -o name | xargs kubectl delete -n $(NAMESPACE) || true
-	@kubectl get roles,rolebindings,serviceaccounts keycloak-operator -n $(NAMESPACE) --no-headers=true -o name | xargs kubectl delete -n $(NAMESPACE) || true
-	@kubectl get pv,pvc -n $(NAMESPACE) --no-headers=true -o name | xargs kubectl delete -n $(NAMESPACE) || true
-	# Remove all CRDS with keycloak.org in the name
-	@kubectl get crd --no-headers=true -o name | awk '/keycloak.org/{print $1}' | xargs kubectl delete || true
-	@kubectl delete namespace $(NAMESPACE) || true
+# BUNDLE_IMG defines the image:tag used for the bundle.
+# You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
+BUNDLE_IMG ?= controller-bundle:$(VERSION)
 
-.PHONY: cluster/clean/monitoring
-cluster/clean/monitoring:
-	@kubectl delete -n $(NAMESPACE) --all blackboxtargets
-	@kubectl delete -n $(NAMESPACE) --all grafanadashboards
-	@kubectl delete -n $(NAMESPACE) --all grafanadatasources
-	@kubectl delete -n $(NAMESPACE) --all applicationmonitorings
-	@kubectl delete crd grafanas.integreatly.org
-	@kubectl delete crd grafanadashboards.integreatly.org
-	@kubectl delete crd grafanadatasources.integreatly.org
-	@kubectl delete crd blackboxtargets.applicationmonitoring.integreatly.org
-	@kubectl delete crd applicationmonitorings.applicationmonitoring.integreatly.org
-	@kubectl delete namespace application-monitoring
+# Image URL to use all building/pushing image targets
+IMG ?= ghcr.io/addreas/keycloak-operator:latest
+# Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
+CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
-.PHONY: cluster/prepare/monitoring
-cluster/prepare/monitoring:
-	oc label namespace $(NAMESPACE) "monitoring-key=middleware"
-	$(eval _OS_PROMETHEUS_USER=$(shell oc get secrets -n openshift-monitoring grafana-datasources -o 'go-template={{index .data "prometheus.yaml"}}' | base64 --decode | jq -r '.datasources[0].basicAuthUser'))
-	$(eval _OS_PROMETHEUS_PASS=$(shell oc get secrets -n openshift-monitoring grafana-datasources -o 'go-template={{index .data "prometheus.yaml"}}' | base64 --decode | jq -r '.datasources[0].basicAuthPassword'))
-	kubectl label namespace $(NAMESPACE) monitoring-key=middleware || true
-	git clone --depth=1  git@github.com:integr8ly/application-monitoring-operator.git /tmp/keycloak-operator || true
-	$(MAKE) -C /tmp/keycloak-operator cluster/install
-	cat ./deploy/examples/monitoring/federation.yaml | sed -e 's/<user>/'"$(_OS_PROMETHEUS_USER)"'/g' | \
-		sed -e 's@<pass>@'"$(_OS_PROMETHEUS_PASS)"'@g' > /tmp/keycloak-operator/integreatly-additional.yaml || true
-	kubectl create secret generic integreatly-additional-scrape-configs --from-file=/tmp/keycloak-operator/integreatly-additional.yaml --dry-run=client -o yaml | kubectl apply -n application-monitoring -f -
-	rm -rf /tmp/keycloak-operator/
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
+else
+GOBIN=$(shell go env GOBIN)
+endif
 
-.PHONY: cluster/create/examples
-cluster/create/examples:
-	@kubectl create -f deploy/examples/keycloak/keycloak.yaml -n $(NAMESPACE)
-	@kubectl create -f deploy/examples/realm/basic_realm.yaml -n $(NAMESPACE)
+all: manager
 
-##############################
-# Tests                      #
-##############################
-.PHONY: test/unit
-test/unit:
-	@echo Running tests:
-	@go test -v -tags=unit -coverpkg ./... -coverprofile cover-unit.coverprofile -covermode=count -mod=vendor ./pkg/...
+# Run tests
+ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
+test: generate fmt vet manifests
+	mkdir -p ${ENVTEST_ASSETS_DIR}
+	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.0/hack/setup-envtest.sh
+	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
 
-.PHONY: test/e2e
-test/e2e: setup/operator-sdk
-	@echo Running e2e local tests:
-	operator-sdk test local --go-test-flags "-tags=integration -coverpkg ./... -coverprofile cover-e2e.coverprofile -covermode=count -timeout 0" --operator-namespace $(NAMESPACE) --up-local --debug --verbose ./test/e2e
+# Build manager binary
+manager: generate fmt vet
+	go build -o bin/manager main.go
 
-.PHONY: test/e2e-latest-image
-test/e2e-latest-image:
-	@echo Running the latest operator image in the cluster:
-	# Doesn't need cluster/prepare as it's done by operator-sdk. Uses a randomly generated namespace (instead of keycloak namespace) to support parallel test runs.
-	operator-sdk run local ./test/e2e --go-test-flags "-tags=integration -coverpkg ./... -coverprofile cover-e2e.coverprofile -covermode=count" --debug --verbose
+# Run against the configured Kubernetes cluster in ~/.kube/config
+run: generate fmt vet manifests
+	go run ./main.go
 
-.PHONY: test/ibm-validation
-test/ibm-validation:
-	@echo Running the operator image in the cluster
-	operator-sdk test local ./test/e2e --go-test-flags "-tags=integration -coverpkg ./... -coverprofile cover-e2e.coverprofile -covermode=count -timeout 0" --operator-namespace $(NAMESPACE) --debug --verbose --global-manifest=deploy/empty-init.yaml --namespaced-manifest=deploy/operator.yaml
+# Install CRDs into a cluster
+install: manifests kustomize
+	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
-.PHONY: test/e2e-local-image cluster/prepare setup/operator-sdk
-test/e2e-local-image: cluster/prepare setup/operator-sdk
-	@echo Running e2e tests with a fresh built operator image in the cluster:
-	docker build . -t keycloak-operator:test
-	@echo Running tests:
-	operator-sdk test local --go-test-flags "-tags=integration -coverpkg ./... -coverprofile cover-e2e.coverprofile -covermode=count -timeout 0" --image="keycloak-operator:test" --namespace $(NAMESPACE) --up-local --debug --verbose ./test/e2e
+# Uninstall CRDs from a cluster
+uninstall: manifests kustomize
+	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
-.PHONY: test/coverage/prepare
-test/coverage/prepare:
-	@echo Preparing coverage file:
-	@echo "mode: count" > cover-all.coverprofile
-	@echo "mode: count" > cover-e2e.coverprofile
-	@tail -n +2 cover-unit.coverprofile >> cover-all.coverprofile
-	@tail -n +2 cover-e2e.coverprofile >> cover-all.coverprofile
-	@echo Running test coverage generation:
-	@which cover 2>/dev/null ; if [ $$? -eq 1 ]; then \
-		go get golang.org/x/tools/cmd/cover; \
-	fi
-	@go tool cover -html=cover-all.coverprofile -o cover.html
+# Deploy controller in the configured Kubernetes cluster in ~/.kube/config
+deploy: manifests kustomize
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
-.PHONY: test/coverage
-test/coverage: test/coverage/prepare
-	@go tool cover -html=cover-all.coverprofile -o cover.html
+# UnDeploy controller from the configured Kubernetes cluster in ~/.kube/config
+undeploy:
+	$(KUSTOMIZE) build config/default | kubectl delete -f -
 
-##############################
-# Local Development          #
-##############################
-.PHONY: setup
-setup: setup/mod setup/githooks code/gen
+# Generate manifests e.g. CRD, RBAC etc.
+manifests: controller-gen
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-.PHONY: setup/githooks
-setup/githooks:
-	@echo Setting up Git hooks:
-	ln -sf $$PWD/.githooks/* $$PWD/.git/hooks/
+# Run go fmt against code
+fmt:
+	go fmt ./...
 
-.PHONY: setup/mod
-setup/mod:
-	@echo Adding vendor directory
-	go mod vendor
-	@echo setup complete
+# Run go vet against code
+vet:
+	go vet ./...
 
-.PHONY: setup/mod/verify
-setup/mod/verify:
-	go mod verify
+# Generate code
+generate: controller-gen
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-.PHONY: setup/operator-sdk
-setup/operator-sdk:
-	@echo Installing Operator SDK
-	@curl -Lo operator-sdk ${OPERATOR_SDK_DOWNLOAD_URL} && chmod +x operator-sdk && sudo mv operator-sdk /usr/local/bin/
+# Build the docker image
+docker-build: test
+	docker build -t ${IMG} .
 
-.PHONY: setup/linter
-setup/linter:
-	@echo Installing Linter
-	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.26.0
+# Push the docker image
+docker-push:
+	docker push ${IMG}
 
-.PHONY: code/run
-code/run:
-	@operator-sdk run local --watch-namespace=${NAMESPACE}
+# Download controller-gen locally if necessary
+CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
+controller-gen:
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.1)
 
-.PHONY: code/compile
-code/compile:
-	@GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} go build -o=$(COMPILE_TARGET) -mod=vendor ./cmd/manager
+# Download kustomize locally if necessary
+KUSTOMIZE = $(shell pwd)/bin/kustomize
+kustomize:
+	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
 
-.PHONY: code/gen
-code/gen: client/gen
-	operator-sdk generate k8s
-	operator-sdk generate crds --crd-version v1beta1
-	# This is a copy-paste part of `operator-sdk generate openapi` command (suggested by the manual)
-	which ./bin/openapi-gen > /dev/null || go build -o ./bin/openapi-gen k8s.io/kube-openapi/cmd/openapi-gen
-	./bin/openapi-gen --logtostderr=true -o "" -i ./pkg/apis/keycloak/v1alpha1 -O zz_generated.openapi -p ./pkg/apis/keycloak/v1alpha1 -h ./hack/boilerplate.go.txt -r "-"
+# go-get-tool will 'go get' any package $2 and install it to $1.
+PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
+define go-get-tool
+@[ -f $(1) ] || { \
+set -e ;\
+TMP_DIR=$$(mktemp -d) ;\
+cd $$TMP_DIR ;\
+go mod init tmp ;\
+echo "Downloading $(2)" ;\
+GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
+rm -rf $$TMP_DIR ;\
+}
+endef
 
-.PHONY: code/check
-code/check:
-	@echo go fmt
-	go fmt $$(go list ./... | grep -v /vendor/)
+# Generate bundle manifests and metadata, then validate generated files.
+.PHONY: bundle
+bundle: manifests kustomize
+	operator-sdk generate kustomize manifests -q
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	operator-sdk bundle validate ./bundle
 
-.PHONY: code/fix
-code/fix:
-	# goimport = gofmt + optimize imports
-	@which goimports 2>/dev/null ; if [ $$? -eq 1 ]; then \
-		go get golang.org/x/tools/cmd/goimports; \
-	fi
-	@goimports -w `find . -type f -name '*.go' -not -path "./vendor/*"`
-
-.PHONY: code/lint
-code/lint:
-	@echo "--> Running golangci-lint"
-	@$(shell go env GOPATH)/bin/golangci-lint run --timeout 10m
-
-.PHONY: client/gen
-client/gen:
-	@echo "--> Running code-generator to generate clients"
-	# prepare tool code-generator
-	@mkdir -p ./tmp/code-generator
-	@git clone https://github.com/kubernetes/code-generator.git --branch v0.21.0-alpha.2 --single-branch  ./tmp/code-generator
-	# generate client
-	./tmp/code-generator/generate-groups.sh "client,informer,lister" github.com/keycloak/keycloak-operator/pkg/client github.com/keycloak/keycloak-operator/pkg/apis keycloak:v1alpha1 --output-base ./tmp --go-header-file ./hack/boilerplate.go.txt
-	# check generated client at ./pkg/client
-	@cp -r ./tmp/github.com/keycloak/keycloak-operator/pkg/client/* ./pkg/client/
-	@rm -rf ./tmp/github.com ./tmp/code-generator
-
-##############################
-# CI                         #
-##############################
-.PHONY: setup/github
-setup/github:
-	@echo Installing Kubectl
-	@curl -Lo kubectl ${KUBECTL_DOWNLOAD_URL} && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
-	@echo Installing Minikube
-	@curl -Lo minikube ${MINIKUBE_DOWNLOAD_URL} && chmod +x minikube && sudo mv minikube /usr/local/bin/
-	@echo Booting Minikube up, see Travis env. variables for more information
-	@mkdir -p $HOME/.kube $HOME/.minikube
-	@touch $KUBECONFIG
-	@sudo minikube start --vm-driver=none
-	@sudo ./hack/modify_etc_hosts.sh "keycloak.local"
-	@sudo minikube addons enable ingress
-
-.PHONY: test/goveralls
-test/goveralls: test/coverage/prepare
-	@echo "Preparing goveralls file"
-	go get -u github.com/mattn/goveralls
-	@echo "Running goveralls"
-	@goveralls -v -coverprofile=cover-all.coverprofile -service=github
+# Build the bundle image.
+.PHONY: bundle-build
+bundle-build:
+	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
